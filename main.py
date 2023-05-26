@@ -1,5 +1,6 @@
 import collections
 import json
+import os
 import pathlib
 import sqlite3
 import tempfile
@@ -7,7 +8,7 @@ import threading
 import time
 import zipfile
 from datetime import datetime
-from typing import Optional, Set, Dict, Tuple
+from typing import Optional, Set, Dict, Tuple, NamedTuple, Generator, Any, List
 
 import requests
 from bs4 import BeautifulSoup
@@ -15,65 +16,114 @@ from requests import Response
 
 ARTICLES_REQ_URL = "https://www.binance.com/bapi/composite/v1/public/cms/news/queryFlashNewsList"
 CONCRETE_ARTICLE_URL = "https://www.binance.com/en/news/flash/"
+INDEX_DB_FILE = pathlib.Path(os.getcwd()) / "articles.db"
+
+
+class ArticleRow(NamedTuple):
+    id: int
+    dt: datetime
+    parsed: bool
+
+    @staticmethod
+    def from_row(row: Tuple[int, str, int]) -> 'ArticleRow':
+        return ArticleRow(
+            id=row[0],
+            dt=datetime.fromisoformat(row[1]),
+            parsed=bool(row[2]),
+        )
+
+    def to_row(self) -> Tuple[int, str, int]:
+        return (self.id, self.dt.isoformat(), int(self.parsed))
 
 
 class SqlliteConnector:
-    def __init__(self):
-        self.conn = sqlite3.connect("./articles.db")
-        self.cursor = self.conn.cursor()
-        self.conn.execute('''
-        create table if not exists articles (
+    def __init__(self, file_name: pathlib.Path):
+        self._conn = sqlite3.connect(file_name)
+        self._cursor = self._conn.cursor()
+        self._conn.execute('''
+        CREATE TABLE IF NOT EXISTS articles (
             id INTEGER PRIMARY KEY, 
             posted_date DATE, 
             is_parsed INTEGER
         )
         ''')
-        self.articles = dict()
-        self.articles_ids = list()
-        self.cursor.execute("select * from articles order by posted_date")
-        for row in self.cursor.fetchall():
+        self._articles: Dict[int, ArticleRow] = dict()
+        self._cursor.execute("SELECT * FROM articles ORDER BY posted_date")
+        for row in self._cursor.fetchall():
             id_ = row[0]
-            self.articles[id_] = (datetime.strptime(row[1], "%Y-%m-%dT%H:%M:%S"), row[2])
-            self.articles_ids.append(id_)
+            self._articles[id_] = ArticleRow.from_row(row)
+
+        self._not_saved_new: List[ArticleRow] = list()
+        self._not_saved_parsed: Set[int] = set()
 
     # for context manager
     def __enter__(self):
         return self
 
     def __exit__(self, type_, value, traceback):
-        self.conn.commit()
+        self.save()
+        self._conn.commit()
 
     # for context manager
 
-    def insert_article(self, article: int, posted_date: datetime, is_parsed: int)->None:
-        self.cursor.execute("insert into articles (id,posted_date,is_parsed) values (?,?,?)",
-                            (article, posted_date.isoformat(), is_parsed))
-        self.articles[article] = (posted_date, is_parsed)
-        self.articles_ids.insert(0, article)
+    def _add_article(self, article: ArticleRow) -> None:
+        self._cursor.execute("INSERT INTO articles (id, posted_date, is_parsed) VALUES (?, ?, ?)", article.to_row())
 
-    def set_parsed(self, article: int) -> None:
-        self.cursor.execute("update articles set is_parsed = 1 where id = ?", (article,))
+    def _mark_article_as_parsed(self, article_id: int) -> None:
+        self._cursor.execute("UPDATE articles SET is_parsed = 1 WHERE id = ?", (article_id,))
 
-    def is_parsed(self, article: int) -> bool:
-        return self.articles.get(article)[1] == 1
+    def save(self) -> None:
+        for article in self._not_saved_new:
+            self._add_article(article)
+        self._not_saved_new.clear()
+
+        for article_id in self._not_saved_parsed:
+            self._mark_article_as_parsed(article_id)
+        self._not_saved_parsed.clear()
+
+    def insert_article(self, article: ArticleRow, *, soft: bool = False) -> None:
+        if article.id in self._articles:
+            return
+
+        self._articles[article.id] = article
+
+        if soft:
+            self._not_saved_new.append(article)
+        else:
+            self._add_article(article)
+
+    def set_parsed(self, article_id: int, *, soft: bool = False) -> None:
+        if self._articles[article_id].parsed:
+            return
+
+        self._articles[article_id] = ArticleRow(
+            id=self._articles[article_id].id,
+            dt=self._articles[article_id].dt,
+            parsed=True,
+        )
+        if soft:
+            self._not_saved_parsed.add(article_id)
+        else:
+            self._mark_article_as_parsed(article_id)
+
+    def is_parsed(self, article_id: int) -> bool:
+        return self._articles.get(article_id).parsed
 
     def get_size(self) -> int:
-        return len(self.articles_ids)
+        return len(self._articles)
 
-    def has_article(self, article: int) -> bool:
-        return self.articles.get(article) is not None
+    def has_article(self, article_id: int) -> bool:
+        return self._articles.get(article_id, None) is not None
 
-    def __getitem__(self, item) -> int:
-        return self.articles_ids[item]
-
-    def get_article_info(self, article: int) -> Tuple:
-        return self.articles.get(article)
+    def get_article_info(self, article_id: int) -> ArticleRow:
+        return self._articles[article_id]
 
 
 class RequestInspector:
-    def __init__(self, req_hour_rate=720000, headers: Dict = None):
-        if headers is None:
-            headers = {'user-agent': 'Mozilla/5.0 (Windows NT 10.0; rv:91.0) Gecko/20100101 Firefox/91.0'}
+    def __init__(self, req_hour_rate=720000, headers: Optional[Dict[str, str]] = None) -> None:
+        headers = dict((k.strip().lower(), v) for k, v in (headers or dict()).items())
+        if 'user-agent' not in headers:
+            headers['user-agent'] = 'Mozilla/5.0 (Windows NT 10.0; rv:91.0) Gecko/20100101 Firefox/91.0'
         self.hour_limit = req_hour_rate
         self.last_parsed_time = time.time()
         self.lock = threading.Lock()
@@ -81,7 +131,7 @@ class RequestInspector:
         self.delta = 0
         self.headers = headers
 
-    def request_get(self, url: str, req_args: Dict) -> Response:
+    def request_get(self, url: str, req_args: Dict[str, str]) -> Response:
         with self.lock:
             self.delta += 1
             now = time.time()
@@ -101,19 +151,17 @@ class RequestInspector:
 
 
 class RequestIterator:
-    def __init__(self, inspector: RequestInspector):
+    def __init__(self, inspector: RequestInspector) -> None:
         self.index = 0
         self.inspector = inspector
         self.page = 1
         self.prev_size = 200
         self.articles = list()
 
-    def __iter__(self) -> Dict:
+    def __iter__(self) -> Generator[Dict[str, Any]]:
         for i in self.articles:
             if self.index == len(self.articles) and self.prev_size == 200:
-                resp = self.inspector.request_get(ARTICLES_REQ_URL,
-                                                  {"pageNo": self.page, "pageSize": 200, "isTransform": "false",
-                                                   "tagId": ""})
+                resp = self.inspector.request_get(ARTICLES_REQ_URL, {"pageNo": self.page, "pageSize": 200, "isTransform": "false", "tagId": ""})
                 self.page += 1
                 new_articles_data = resp.json().get("data").get("contents")
                 self.articles.extend(new_articles_data)
@@ -133,9 +181,19 @@ class ContentParsingError(Exception):
     pass
 
 
-ArticleInfo = collections.namedtuple('ArticleInfo', ['header', 'content', 'publication_dt',
-                                                     'parsing_dt', 'html', 'href', 'meta_keywords'])
-ArticleInfoShort = collections.namedtuple('ArticleInfo', ['id', 'createTime'])
+class ArticleInfo(NamedTuple):
+    href: str
+    html: str
+    header: str
+    content: str
+    meta_keywords: List[str]
+    publication_dt: datetime
+    parsing_dt: datetime
+
+
+class ArticleInfoShort(NamedTuple):
+    id: int
+    timestamp: float
 
 
 # class CustomEncoder(json.JSONEncoder):
@@ -145,8 +203,7 @@ ArticleInfoShort = collections.namedtuple('ArticleInfo', ['id', 'createTime'])
 #         return super().default(obj)
 
 
-def get_all_articles_binance(from_dt: Optional[datetime], to_dt: Optional[datetime], inspector: RequestInspector) -> \
-        Set[ArticleInfoShort]:
+def get_all_articles_binance(from_dt: Optional[datetime], to_dt: Optional[datetime], inspector: RequestInspector) -> Set[ArticleInfoShort]:
     if from_dt is None:
         from_dt = datetime.now()
     if to_dt is None:
@@ -160,7 +217,7 @@ def get_all_articles_binance(from_dt: Optional[datetime], to_dt: Optional[dateti
             continue
         if create_time < to_:
             break
-        articles.add(ArticleInfoShort(article.get("id"), article.get("createTime") / 1000))
+        articles.add(ArticleInfoShort(int(article["id"]), article["createTime"] / 1000))
     return articles
 
 
@@ -172,13 +229,15 @@ def parse_article_binance(html: str) -> ArticleInfo:
     bs_ = BeautifulSoup(html, "html.parser")
     try:
         article = bs_.select_one("article.css-17l2a77")
-        header = article.select_one("h1.css-ps28d1").text
-        publication_dt = datetime.strptime(article.select_one("div.css-1hmgk20").text, "%Y-%m-%d %H:%M").isoformat()
-        content = article.select_one("div.css-13uwx4b").text
-        parsing_dt = datetime.now().isoformat()
-        href = bs_.select_one("meta[property='og:url']")["content"]
-        meta_keywords = bs_.select_one("meta[name='keywords']")["content"].split(', ')
-        info = ArticleInfo(header, content, publication_dt, parsing_dt, html, href, meta_keywords)
+        info = ArticleInfo(
+            header=article.select_one("h1.css-ps28d1").text,
+            content=article.select_one("div.css-13uwx4b").text,
+            publication_dt=datetime.strptime(article.select_one("div.css-1hmgk20").text, "%Y-%m-%d %H:%M"),
+            parsing_dt=datetime.now(),
+            html=html,
+            href=bs_.select_one("meta[property='og:url']")["content"],
+            meta_keywords=bs_.select_one("meta[name='keywords']")["content"].split(', '),
+        )
         return info
     except TypeError:
         raise ContentParsingError("some article element wasn't found")
@@ -186,8 +245,7 @@ def parse_article_binance(html: str) -> ArticleInfo:
 
 def save_to_disk(file_name: str, article: ArticleInfo) -> None:
     path = pathlib.Path(f'./uploads/binance')
-    with tempfile.TemporaryDirectory() as temp_dir, \
-            zipfile.ZipFile(path.joinpath(f"{file_name}.zip"), 'w') as zipf:
+    with tempfile.TemporaryDirectory() as temp_dir, zipfile.ZipFile(path.joinpath(f"{file_name}.zip"), 'w') as zipf:
         with open(f"{temp_dir}/{file_name}.html", 'w') as html_file:
             html_file.write(article.html)
             zipf.write(html_file.name, f'{file_name}.html')
@@ -195,7 +253,6 @@ def save_to_disk(file_name: str, article: ArticleInfo) -> None:
             article_json = json.dumps(article)
             json_file.write(article_json)
             zipf.write(json_file.name, f'{file_name}.json')
-    return
 
 
 def find_index(conn: SqlliteConnector, from_dt: Optional[datetime], to_dt: Optional[datetime]) -> int:
@@ -222,13 +279,15 @@ def find_index(conn: SqlliteConnector, from_dt: Optional[datetime], to_dt: Optio
 
 def parse_articles(from_dt: Optional[datetime], to_dt: Optional[datetime]) -> None:
     inspector: RequestInspector = RequestInspector()
-    conn = SqlliteConnector()
+    conn = SqlliteConnector(INDEX_DB_FILE)
+
     with conn:
         for article in get_all_articles_binance(None, None, inspector):
             if not conn.has_article(article.id):
-                conn.insert_article(article.id, datetime.fromtimestamp(article.createTime), 0)
+                conn.insert_article(ArticleRow(article.id, datetime.fromtimestamp(article.timestamp), False), soft=True)
             else:
                 break
+
     index: int = find_index(conn, from_dt, to_dt)
     if index != -1:
         with conn:
@@ -243,7 +302,7 @@ def parse_articles(from_dt: Optional[datetime], to_dt: Optional[datetime]) -> No
                     article_html = inspector.request_get(f"{CONCRETE_ARTICLE_URL}{article_id}", {}).text
                     article_info = parse_article_binance(article_html)
                     save_to_disk(filename, article_info)
-                    conn.set_parsed(article_id)
+                    conn.set_parsed(article_id, soft=True)
                 except Exception as ex:
                     print(ex)
 
