@@ -1,6 +1,7 @@
 import collections
 import json
 import pathlib
+import sqlite3
 import tempfile
 import threading
 import time
@@ -9,7 +10,6 @@ from datetime import datetime
 from typing import Optional, Set, Dict, Tuple
 
 import requests
-import sqlite3
 from bs4 import BeautifulSoup
 from requests import Response
 
