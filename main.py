@@ -168,9 +168,11 @@ class RequestIterator:
         self._articles.clear()
 
     def request_articles(self) -> List[Dict[str, Any]]:
-        resp = self._inspector.request_get(ARTICLES_REQ_URL,
-                                           {"pageNo": self._page, "pageSize": 20, "isTransform": "false", "tagId": ""}) \
-            .json().get("data").get("contents")
+        resp = self._inspector\
+            .request_get(ARTICLES_REQ_URL, {"pageNo": self._page, "pageSize": 20, "isTransform": "false", "tagId": ""}) \
+            .json()\
+            .get("data")\
+            .get("contents")
         self._page += 1
         return resp or list()
 
@@ -209,9 +211,10 @@ class ArticleInfoShort(NamedTuple):
     id: int
     timestamp: float
 
-def get_condition_index(from_: int, to_: int, arr: list) -> int:
-    for i in range(len(arr)):
-        if to_ <= int(arr[i]['createTime']) <= from_:
+
+def get_first_index_of_element_from_to(from_: int, to_: int, arr: list) -> int:
+    for i, row in enumerate(arr):
+        if to_ <= int(row['createTime']) <= from_:
             return i
     return -1
 
@@ -242,31 +245,27 @@ def get_all_articles_binance(from_dt: Optional[datetime], to_dt: Optional[dateti
             articles_data.clear()
             break
 
-    condition_index = get_condition_index(from_, to_, articles_data)
+    first_matched_index = get_first_index_of_element_from_to(from_, to_, articles_data)
     parsed_pages = {0}
 
-    while condition_index == -1 or (condition_index == 0 and mid - 1 not in parsed_pages):
+    while first_matched_index == -1 or (first_matched_index == 0 and mid - 1 not in parsed_pages):
         mid = (high + low) // 2
         parsed_pages.add(mid)
         try:
             articles_data = inspector \
                 .request_get(ARTICLES_REQ_URL, {"pageNo": mid, "pageSize": 20, "isTransform": "false", "tagId": ""}) \
-                .json().get("data").get("contents")
+                .json()\
+                .get("data")\
+                .get("contents")
         except RequestError:
             articles_data.clear()
         if articles_data is None or len(articles_data) == 0:
             high = mid
             continue
-        condition_index = get_condition_index(from_, to_, articles_data)
-        if condition_index != -1:
-            create_time = articles_data[condition_index]['createTime']
-        else:
-            create_time = articles_data[0]['createTime']
-        if create_time > from_:
-            low = mid
-        else:
-            high = mid
-    iterator = RequestIterator(inspector, articles_data[:condition_index or 0], mid+1)
+        first_matched_index = get_first_index_of_element_from_to(from_, to_, articles_data)
+        create_time = articles_data[first_matched_index]['createTime'] if first_matched_index != -1 else articles_data[0]['createTime']
+        high, low = (high, mid) if create_time > from_ else (mid, low)
+    iterator = RequestIterator(inspector, articles_data[:first_matched_index or 0], mid+1)
     for article in iterator:
         create_time: int = article["createTime"]
         # if create_time > from_:
