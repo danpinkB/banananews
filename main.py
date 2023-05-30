@@ -3,6 +3,7 @@ import json
 import os
 import pathlib
 import sqlite3
+import sys
 import tempfile
 import threading
 import time
@@ -151,25 +152,40 @@ class RequestInspector:
 
 
 class RequestIterator:
-    def __init__(self, inspector: RequestInspector) -> None:
-        self.index = 0
-        self.inspector = inspector
-        self.page = 1
-        self.prev_size = 200
-        self.articles = list()
+    def __init__(self, inspector: RequestInspector, articles: list, page: int = 1) -> None:
+        self._inspector = inspector
+        self._page = page
+        self._articles = list()
+        if articles is not None:
+            self._articles.extend(articles)
+        self._index = 0
 
-    def __iter__(self) -> Generator[Dict[str, Any]]:
-        for i in self.articles:
-            if self.index == len(self.articles) and self.prev_size == 200:
-                resp = self.inspector.request_get(ARTICLES_REQ_URL, {"pageNo": self.page, "pageSize": 200, "isTransform": "false", "tagId": ""})
-                self.page += 1
-                new_articles_data = resp.json().get("data").get("contents")
-                self.articles.extend(new_articles_data)
-                self.prev_size = len(new_articles_data)
+    def set_page(self, page: int) -> None:
+        self._page = page
+
+    def get_page(self) -> int:
+        return self._page
+
+    def clear(self) -> None:
+        self._articles.clear()
+
+    def request_articles(self) -> List[Dict[str, Any]]:
+        resp = self._inspector.request_get(ARTICLES_REQ_URL,
+                                           {"pageNo": self._page, "pageSize": 20, "isTransform": "false", "tagId": ""}) \
+            .json().get("data").get("contents")
+        self._page += 1
+        return resp or list()
+
+    def __iter__(self) -> Generator[Dict[str, Any], None, None]:
+        if len(self._articles) == 0:
+            self._articles.extend(self.request_articles())
+        for i in self._articles:
             yield i
-            self.index += 1
+            self._index += 1
+            if self._index == len(self._articles) - 1:
+                self._articles.extend(self.request_articles())
 
-    def __next__(self) -> Dict:
+    def __next__(self) -> None:
         pass
 
 
@@ -202,8 +218,15 @@ class ArticleInfoShort(NamedTuple):
 #             return obj.isoformat()
 #         return super().default(obj)
 
+def check_if_condition_exists(from_: int, to_: int, arr: list) -> int:
+    for i in range(len(arr)):
+        if to_ <= int(arr[i]['createTime']) <= from_:
+            return i
+    return -1
 
-def get_all_articles_binance(from_dt: Optional[datetime], to_dt: Optional[datetime], inspector: RequestInspector) -> Set[ArticleInfoShort]:
+
+def get_all_articles_binance(from_dt: Optional[datetime], to_dt: Optional[datetime], inspector: RequestInspector) -> \
+        Set[ArticleInfoShort]:
     if from_dt is None:
         from_dt = datetime.now()
     if to_dt is None:
@@ -211,8 +234,50 @@ def get_all_articles_binance(from_dt: Optional[datetime], to_dt: Optional[dateti
     articles = set()
     from_: int = int(from_dt.timestamp() * 1000)
     to_: int = int(to_dt.timestamp() * 1000)
-    for article in RequestIterator(inspector):
-        create_time: int = article.get("createTime")
+
+    low = 0
+    high = 1000
+    mid: int = 1
+    articles_data: list = list()
+    while len(articles_data) == 0 or articles_data[0]['createTime'] >= from_:
+        try:
+            articles_data = inspector\
+                .request_get(ARTICLES_REQ_URL, {"pageNo": mid, "pageSize": 20, "isTransform": "false", "tagId": ""}) \
+                .json().get("data").get("contents")
+            low = mid
+            high *= 2
+            mid = (high + low) // 2
+        except RequestError:
+            articles_data.clear()
+            break
+
+    match_index = check_if_condition_exists(from_, to_, articles_data)
+    parsed_pages = {0}
+
+    while match_index == -1 or (match_index == 0 and mid - 1 not in parsed_pages):
+        mid = (high + low) // 2
+        parsed_pages.add(mid)
+        try:
+            articles_data = inspector \
+                .request_get(ARTICLES_REQ_URL, {"pageNo": mid, "pageSize": 20, "isTransform": "false", "tagId": ""}) \
+                .json().get("data").get("contents")
+        except RequestError:
+            articles_data.clear()
+        if articles_data is None or len(articles_data) == 0:
+            high = mid
+            continue
+        match_index = check_if_condition_exists(from_, to_, articles_data)
+        if match_index != -1:
+            create_time = articles_data[match_index]['createTime']
+        else:
+            create_time = articles_data[0]['createTime']
+        if create_time > from_:
+            low = mid
+        else:
+            high = mid
+    iterator = RequestIterator(inspector, articles_data, mid+1)
+    for article in iterator:
+        create_time: int = article["createTime"]
         if create_time > from_:
             continue
         if create_time < to_:
@@ -255,56 +320,18 @@ def save_to_disk(file_name: str, article: ArticleInfo) -> None:
             zipf.write(json_file.name, f'{file_name}.json')
 
 
-def find_index(conn: SqlliteConnector, from_dt: Optional[datetime], to_dt: Optional[datetime]) -> int:
-    end = conn.get_size() - 1
-    size_ = conn.get_size()
-    start = 0
-    while True:
-        middle = end - int((end - start) / 2)
-        if middle == size_:
-            return middle
-        index_date: datetime = conn.get_article_info(conn[middle])[0]
-        prev_date: datetime = conn.get_article_info(conn[middle + 1])[0]
-        if middle == 0:
-            return 0
-        if to_dt <= index_date <= from_dt < prev_date:
-            return middle
-        if index_date < from_dt:
-            start = middle
-            continue
-        if index_date > to_dt:
-            end = middle
-            continue
-
-
 def parse_articles(from_dt: Optional[datetime], to_dt: Optional[datetime]) -> None:
     inspector: RequestInspector = RequestInspector()
     conn = SqlliteConnector(INDEX_DB_FILE)
 
     with conn:
-        for article in get_all_articles_binance(None, None, inspector):
+        for article in get_all_articles_binance(from_dt, to_dt, inspector):
             if not conn.has_article(article.id):
-                conn.insert_article(ArticleRow(article.id, datetime.fromtimestamp(article.timestamp), False), soft=True)
-            else:
-                break
-
-    index: int = find_index(conn, from_dt, to_dt)
-    if index != -1:
-        with conn:
-            for i in range(index):
-                article_id: int = conn[index - i]
-                if conn.get_article_info(article_id)[0] < to_dt:
-                    break
-                if conn.is_parsed(article_id):
-                    continue
-                filename = f"binance_{article_id}"
-                try:
-                    article_html = inspector.request_get(f"{CONCRETE_ARTICLE_URL}{article_id}", {}).text
-                    article_info = parse_article_binance(article_html)
-                    save_to_disk(filename, article_info)
-                    conn.set_parsed(article_id, soft=True)
-                except Exception as ex:
-                    print(ex)
+                filename = f"binance_{article.id}"
+                article_html = inspector.request_get(f"{CONCRETE_ARTICLE_URL}{article.id}", {}).text
+                article_info = parse_article_binance(article_html)
+                save_to_disk(filename, article_info)
+                conn.insert_article(ArticleRow(article.id, datetime.fromtimestamp(article.timestamp), True), soft=True)
 
 
 if __name__ == "__main__":
