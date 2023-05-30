@@ -1,9 +1,7 @@
-import collections
 import json
 import os
 import pathlib
 import sqlite3
-import sys
 import tempfile
 import threading
 import time
@@ -211,14 +209,7 @@ class ArticleInfoShort(NamedTuple):
     id: int
     timestamp: float
 
-
-# class CustomEncoder(json.JSONEncoder):
-#     def default(self, obj):
-#         if isinstance(obj, datetime):
-#             return obj.isoformat()
-#         return super().default(obj)
-
-def check_if_condition_exists(from_: int, to_: int, arr: list) -> int:
+def get_condition_index(from_: int, to_: int, arr: list) -> int:
     for i in range(len(arr)):
         if to_ <= int(arr[i]['createTime']) <= from_:
             return i
@@ -251,10 +242,10 @@ def get_all_articles_binance(from_dt: Optional[datetime], to_dt: Optional[dateti
             articles_data.clear()
             break
 
-    match_index = check_if_condition_exists(from_, to_, articles_data)
+    condition_index = get_condition_index(from_, to_, articles_data)
     parsed_pages = {0}
 
-    while match_index == -1 or (match_index == 0 and mid - 1 not in parsed_pages):
+    while condition_index == -1 or (condition_index == 0 and mid - 1 not in parsed_pages):
         mid = (high + low) // 2
         parsed_pages.add(mid)
         try:
@@ -266,23 +257,23 @@ def get_all_articles_binance(from_dt: Optional[datetime], to_dt: Optional[dateti
         if articles_data is None or len(articles_data) == 0:
             high = mid
             continue
-        match_index = check_if_condition_exists(from_, to_, articles_data)
-        if match_index != -1:
-            create_time = articles_data[match_index]['createTime']
+        condition_index = get_condition_index(from_, to_, articles_data)
+        if condition_index != -1:
+            create_time = articles_data[condition_index]['createTime']
         else:
             create_time = articles_data[0]['createTime']
         if create_time > from_:
             low = mid
         else:
             high = mid
-    iterator = RequestIterator(inspector, articles_data, mid+1)
+    iterator = RequestIterator(inspector, articles_data[:condition_index or 0], mid+1)
     for article in iterator:
         create_time: int = article["createTime"]
-        if create_time > from_:
-            continue
-        if create_time < to_:
+        # if create_time > from_:
+        #     continue
+        if create_time < create_time:
             break
-        articles.add(ArticleInfoShort(int(article["id"]), article["createTime"] / 1000))
+        articles.add(ArticleInfoShort(int(article["id"]), create_time / 1000))
     return articles
 
 
