@@ -233,24 +233,10 @@ def get_all_articles_binance(from_dt: Optional[datetime], to_dt: Optional[dateti
     high = 1000
     mid: int = 1
     articles_data: list = list()
-    while len(articles_data) == 0 or articles_data[0]['createTime'] >= from_:
-        try:
-            articles_data = inspector\
-                .request_get(ARTICLES_REQ_URL, {"pageNo": mid, "pageSize": 20, "isTransform": "false", "tagId": ""}) \
-                .json().get("data").get("contents")
-            low = mid
-            high *= 2
-            mid = (high + low) // 2
-        except RequestError:
-            articles_data.clear()
-            break
 
-    first_matched_index = get_first_index_of_element_from_to(from_, to_, articles_data)
-    parsed_pages = {0}
-
-    while first_matched_index == -1 or (first_matched_index == 0 and mid - 1 not in parsed_pages):
-        mid = (high + low) // 2
-        parsed_pages.add(mid)
+    first_matched_index = -1
+    height_multiplier = 2
+    while first_matched_index == -1:
         try:
             articles_data = inspector \
                 .request_get(ARTICLES_REQ_URL, {"pageNo": mid, "pageSize": 20, "isTransform": "false", "tagId": ""}) \
@@ -260,11 +246,22 @@ def get_all_articles_binance(from_dt: Optional[datetime], to_dt: Optional[dateti
         except RequestError:
             articles_data.clear()
         if articles_data is None or len(articles_data) == 0:
+            mid = (high + low) // 2
             high = mid
+            height_multiplier = 1
             continue
         first_matched_index = get_first_index_of_element_from_to(from_, to_, articles_data)
         create_time = articles_data[first_matched_index]['createTime'] if first_matched_index != -1 else articles_data[0]['createTime']
-        high, low = (high, mid) if create_time > from_ else (mid, low)
+        high, low = (high*height_multiplier, mid) if create_time > from_ else (mid, low)
+        mid = (high + low) // 2
+    while first_matched_index == 0 and mid > 1:
+        prev_articles = inspector \
+            .request_get(ARTICLES_REQ_URL, {"pageNo": --mid, "pageSize": 20, "isTransform": "false", "tagId": ""}) \
+            .json() \
+            .get("data") \
+            .get("contents")
+        first_matched_index = get_first_index_of_element_from_to(from_, to_, prev_articles)
+        articles_data = prev_articles + articles_data
     iterator = RequestIterator(inspector, articles_data[:first_matched_index or 0], mid+1)
     for article in iterator:
         create_time: int = article["createTime"]
@@ -296,6 +293,11 @@ def parse_article_binance(html: str) -> ArticleInfo:
         return info
     except TypeError:
         raise ContentParsingError("some article element wasn't found")
+
+
+def serialize_datetime(o):
+    if isinstance(o, datetime):
+        return o.isoformat()
 
 
 def save_to_disk(file_name: str, article: ArticleInfo) -> None:
