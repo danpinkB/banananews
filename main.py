@@ -4,15 +4,17 @@ import pathlib
 import tempfile
 import zipfile
 from datetime import datetime
-from typing import Optional, Generator
-
-from entity.entities import ArticleInfoShort, ArticleInfo, ArticleRow
-from error.errors import RequestError
-from helper.req_inspector import RequestInspector
-from helper.req_iterator import RequestIterator
-from helper.sqllite_connector import SqlliteConnector
-from parser.base_parser import Parser
-from parser.potato_parser import PotatoParser
+from typing import Optional, Iterator
+from src.parser import parse
+from src.entity.entities import ArticleInfoShort, ArticleInfo, ArticleRow
+from src.error.errors import RequestError
+from src.helper.req_inspector import RequestInspector
+from src.helper.req_iterator import RequestIterator
+from src.helper.sqllite_connector import SqlliteConnector
+from src.parser.base_parser import Parser
+from src.parser.parser_ import ElementRecipe
+from src.parser.potato_parser import PotatoParser
+from src.scrapper import Scrapper, ScrapperSettings
 
 INDEX_DB_FILE = pathlib.Path(os.getcwd()) / "articles.db"
 
@@ -24,8 +26,12 @@ def get_first_index_of_element_from_to(from_: float, to_: float, arr: list[Artic
     return -1
 
 
-def get_all_articles(from_dt: Optional[datetime], to_dt: Optional[datetime], inspector: RequestInspector, parser: Parser) -> \
-        Generator[ArticleInfoShort, None, None]:
+def get_all_articles(
+        from_dt: Optional[datetime],
+        to_dt: Optional[datetime],
+        scrapper: Scrapper,
+        recipe: ElementRecipe) -> \
+        Iterator[ArticleInfoShort]:
     if from_dt is None:
         from_dt = datetime.now()
     if to_dt is None:
@@ -36,13 +42,12 @@ def get_all_articles(from_dt: Optional[datetime], to_dt: Optional[datetime], ins
     low = 0
     high = 1000
     mid: int = 1
-    articles_data: list[ArticleInfoShort] = parser.request_articles(mid)
+    articles_data: list[ArticleInfoShort] = parse(scrapper.scrape_list(mid),recipe)
     parsed_pages = set()
     first_matched_index = get_first_index_of_element_from_to(from_, to_, articles_data)
     height_multiplier = 2
     while first_matched_index == -1:
         mid = (high + low) // 2
-        print(mid)
         if mid in parsed_pages:
             raise RequestError('date out of possible range')
         else:
@@ -52,10 +57,8 @@ def get_all_articles(from_dt: Optional[datetime], to_dt: Optional[datetime], ins
             high = mid
             height_multiplier = 1
             continue
-        print(articles_data)
         first_matched_index = get_first_index_of_element_from_to(from_, to_, articles_data)
         create_time: float = articles_data[first_matched_index].timestamp if first_matched_index != -1 else articles_data[0].timestamp
-        print(create_time, from_)
         high, low = (high * height_multiplier, mid) if create_time > from_ else (mid, low)
     while first_matched_index == 0 and mid > 1:
         mid -= 1
@@ -88,6 +91,13 @@ def save_to_disk(file_name: str, folder: pathlib.Path, article: ArticleInfo) -> 
 
 def parse_articles(from_dt: Optional[datetime], to_dt: Optional[datetime], parsers: list[Parser]) -> None:
     inspector: RequestInspector = RequestInspector()
+    scrapper: Scrapper = Scrapper(ScrapperSettings(resource_url="https://cryptopotato.com/",
+                                                   hour_limit=720000,
+                                                   get_all_articles_postfix="category/crypto-news/page/",
+                                                   get_concrete_article_postfix="",
+                                                   get_all_args={},
+                                                   get_concrete_args={"p": ""}
+                                                   ))
 
     for parser in parsers:
         conn = SqlliteConnector(INDEX_DB_FILE, parser.get_name())

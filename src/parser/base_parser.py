@@ -1,8 +1,8 @@
 import pathlib
 from abc import ABC, abstractmethod
 
-from entity.entities import ArticleInfoShort, ArticleInfo
-from helper.req_inspector import RequestInspector
+from src.entity.entities import ArticleInfoShort, ArticleInfo
+from src.helper.req_inspector import RequestInspector
 
 
 class Parser(ABC):

@@ -3,10 +3,10 @@ from datetime import datetime
 
 from bs4 import BeautifulSoup
 
-from entity.entities import ArticleInfo, ArticleInfoShort
-from error.errors import RequestError, ContentParsingError
-from helper.req_inspector import RequestInspector
-from parser.base_parser import Parser
+from src.entity.entities import ArticleInfo, ArticleInfoShort
+from src.error.errors import RequestError, ContentParsingError
+from src.helper.req_inspector import RequestInspector
+from src.parser.base_parser import Parser
 
 ARTICLES_REQ_URL = "https://cryptopotato.com/category/crypto-news/page/"
 CONCRETE_ARTICLE_URL = "https://cryptopotato.com/"

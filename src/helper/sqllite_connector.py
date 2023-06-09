@@ -2,23 +2,22 @@ import pathlib
 import sqlite3
 from typing import Dict, List, Set
 
-from entity.entities import ArticleRow
+from src.entity.entities import ArticleRow
 
 
 class SqlliteConnector:
-    def __init__(self, file_name: pathlib.Path, table_name: str = "articles"):
+    def __init__(self, file_name: pathlib.Path):
         self._conn = sqlite3.connect(file_name)
         self._cursor = self._conn.cursor()
-        self._table_name = f"{table_name}_articles"
         self._conn.execute('''
-        CREATE TABLE IF NOT EXISTS '''+self._table_name+''' (
+        CREATE TABLE IF NOT EXISTS articles (
             id VARCHAR(36) PRIMARY KEY, 
             posted_date DATE, 
             is_parsed INTEGER
         )
         ''')
         self._articles: Dict[str, ArticleRow] = dict()
-        self._cursor.execute(f"SELECT * FROM {self._table_name} ORDER BY posted_date")
+        self._cursor.execute(f"SELECT * FROM articles ORDER BY posted_date")
         for row in self._cursor.fetchall():
             id_ = row[0]
             self._articles[id_] = ArticleRow.from_row(row)
@@ -37,10 +36,10 @@ class SqlliteConnector:
     # for context manager
 
     def _add_article(self, article: ArticleRow) -> None:
-        self._cursor.execute(f"INSERT INTO {self._table_name} (id, posted_date, is_parsed) VALUES (?, ?, ?)", article.to_row())
+        self._cursor.execute(f"INSERT INTO articles (id, posted_date, is_parsed) VALUES (?, ?, ?)", article.to_row())
 
     def _mark_article_as_parsed(self, article_id: str) -> None:
-        self._cursor.execute(f"UPDATE {self._table_name} SET is_parsed = 1 WHERE id = ?", (article_id,))
+        self._cursor.execute(f"UPDATE articles SET is_parsed = 1 WHERE id = ?", (article_id,))
 
     def save(self) -> None:
         for article in self._not_saved_new:

@@ -4,9 +4,9 @@ from datetime import datetime
 from bs4 import BeautifulSoup
 
 from base_parser import Parser
-from entity.entities import ArticleInfoShort, ArticleInfo
-from error.errors import RequestError, ContentParsingError
-from helper.req_inspector import RequestInspector
+from src.entity.entities import ArticleInfoShort, ArticleInfo
+from src.error.errors import RequestError, ContentParsingError
+from src.helper.req_inspector import RequestInspector
 
 ARTICLES_REQ_URL = "https://www.binance.com/bapi/composite/v1/public/cms/news/queryFlashNewsList"
 CONCRETE_ARTICLE_URL = "https://www.binance.com/en/news/flash/"
@@ -36,7 +36,7 @@ class BinanceParser(Parser):
     def parse_article_info(self, html: str) -> ArticleInfo:
         bs_ = BeautifulSoup(html, "html.parser")
         try:
-            article = bs_.select_one("article.css-17l2a77")
+            article = bs_.select_one("html > article.css-17l2a77 > ")
             info = ArticleInfo(
                 header=article.select_one("h1.css-ps28d1").text,
                 content=article.select_one("div.css-13uwx4b").text,

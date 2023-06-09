@@ -4,3 +4,4 @@ class RequestError(Exception):
 
 class ContentParsingError(Exception):
     pass
+

@@ -1,12 +1,13 @@
-from typing import Generator, Dict, Any
+from typing import Generator, Iterator
 
-from entity.entities import ArticleInfoShort
-from helper.req_inspector import RequestInspector
+from src.entity.entities import ArticleInfoShort
+from src.helper.req_inspector import RequestInspector
+from src.scrapper import Scrapper
 
 
 class RequestIterator:
-    def __init__(self, inspector: RequestInspector, articles: list, page: int = 1) -> None:
-        self._inspector = inspector
+    def __init__(self, scrapper: Scrapper, articles: list, page: int = 1) -> None:
+        self._scrapper = scrapper
         self._page = page
         self._articles = list()
         if articles is not None:
@@ -19,10 +20,15 @@ class RequestIterator:
     def get_page(self) -> int:
         return self._page
 
+    def _request_articles(self) -> list:
+        articles = self._scrapper.scrape_list(self._page)
+        self._page += 1
+        return articles
+
     def clear(self) -> None:
         self._articles.clear()
 
-    def __iter__(self) -> Generator[ArticleInfoShort, None, None]:
+    def __iter__(self) -> Iterator[ArticleInfoShort]:
         if len(self._articles) == 0:
             self._articles.extend(self._request_articles())
         for i in self._articles:
@@ -30,6 +36,3 @@ class RequestIterator:
             self._index += 1
             if self._index == len(self._articles) - 1:
                 self._articles.extend(self._request_articles())
-
-    def __next__(self) -> None:
-        pass
