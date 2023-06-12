@@ -3,7 +3,6 @@ from datetime import datetime
 
 from bs4 import BeautifulSoup
 
-from base_parser import Parser
 from src.entity.entities import ArticleInfoShort, ArticleInfo
 from src.error.errors import RequestError, ContentParsingError
 from src.helper.req_inspector import RequestInspector
@@ -12,7 +11,7 @@ ARTICLES_REQ_URL = "https://www.binance.com/bapi/composite/v1/public/cms/news/qu
 CONCRETE_ARTICLE_URL = "https://www.binance.com/en/news/flash/"
 
 
-class BinanceParser(Parser):
+class BinanceParser:
     def __init__(self, inspector: RequestInspector, folder_path: pathlib.Path = None):
         self._inspector = inspector
         if folder_path is None:

@@ -5,16 +5,15 @@ import tempfile
 import zipfile
 from datetime import datetime
 from typing import Optional, Iterator
-from src.parser import parse
-from src.entity.entities import ArticleInfoShort, ArticleInfo, ArticleRow
+
+from src.entity.entities import ArticleInfoShort, ArticleInfo
 from src.error.errors import RequestError
-from src.helper.req_inspector import RequestInspector
 from src.helper.req_iterator import RequestIterator
 from src.helper.sqllite_connector import SqlliteConnector
-from src.parser.base_parser import Parser
-from src.parser.parser_ import ElementRecipe
-from src.parser.potato_parser import PotatoParser
+from src.parser import parse
+from src.parser.parser_ import ElementRecipe, TagRecipe
 from src.scrapper import Scrapper, ScrapperSettings
+from src.scrapper.scrapper import ResourceArticlesSettings
 
 INDEX_DB_FILE = pathlib.Path(os.getcwd()) / "articles.db"
 
@@ -26,11 +25,23 @@ def get_first_index_of_element_from_to(from_: float, to_: float, arr: list[Artic
     return -1
 
 
+def get_articles(scrapper: Scrapper,
+                 list_recipe: ElementRecipe,
+                 concrete_recipe: ElementRecipe,
+                 mid: int):
+    parsed_articles = parse(scrapper.scrape_list(mid).text, list_recipe)
+    parsed_data = [parse(i, concrete_recipe) for i in parsed_articles['articles']]
+    articles_data: list[ArticleInfoShort] = [ArticleInfoShort(id=i.get("id")[0], timestamp=i.get("timestamp")[0]) for i
+                                             in parsed_data]
+    return articles_data
+
+
 def get_all_articles(
         from_dt: Optional[datetime],
         to_dt: Optional[datetime],
         scrapper: Scrapper,
-        recipe: ElementRecipe) -> \
+        list_recipe: ElementRecipe,
+        concrete_recipe: ElementRecipe) -> \
         Iterator[ArticleInfoShort]:
     if from_dt is None:
         from_dt = datetime.now()
@@ -42,7 +53,8 @@ def get_all_articles(
     low = 0
     high = 1000
     mid: int = 1
-    articles_data: list[ArticleInfoShort] = parse(scrapper.scrape_list(mid),recipe)
+    articles_data = get_articles(scrapper, list_recipe, concrete_recipe, mid)
+    return None
     parsed_pages = set()
     first_matched_index = get_first_index_of_element_from_to(from_, to_, articles_data)
     height_multiplier = 2
@@ -52,7 +64,7 @@ def get_all_articles(
             raise RequestError('date out of possible range')
         else:
             parsed_pages.add(mid)
-        articles_data = parser.request_articles(mid)
+        articles_data = get_articles(scrapper, list_recipe, concrete_recipe, mid)
         if articles_data is None or len(articles_data) == 0:
             high = mid
             height_multiplier = 1
@@ -62,10 +74,10 @@ def get_all_articles(
         high, low = (high * height_multiplier, mid) if create_time > from_ else (mid, low)
     while first_matched_index == 0 and mid > 1:
         mid -= 1
-        prev_articles = parser.request_articles(mid)
+        prev_articles = get_articles(scrapper, list_recipe, concrete_recipe, mid)
         first_matched_index = get_first_index_of_element_from_to(from_, to_, prev_articles)
         articles_data = prev_articles + articles_data
-    for article in RequestIterator(inspector, articles_data[:first_matched_index or 0], mid + 1):
+    for article in RequestIterator(scrapper, articles_data[:first_matched_index or 0], mid + 1):
         # if create_time > from_:
         #     continue
         if article.timestamp < to_:
@@ -89,27 +101,49 @@ def save_to_disk(file_name: str, folder: pathlib.Path, article: ArticleInfo) -> 
             zipf.write(json_file.name, f'{file_name}.json')
 
 
-def parse_articles(from_dt: Optional[datetime], to_dt: Optional[datetime], parsers: list[Parser]) -> None:
-    inspector: RequestInspector = RequestInspector()
+def parse_articles(from_dt: Optional[datetime], to_dt: Optional[datetime]) -> None:
     scrapper: Scrapper = Scrapper(ScrapperSettings(resource_url="https://cryptopotato.com/",
                                                    hour_limit=720000,
-                                                   get_all_articles_postfix="category/crypto-news/page/",
-                                                   get_concrete_article_postfix="",
-                                                   get_all_args={},
-                                                   get_concrete_args={"p": ""}
+                                                   list_setting=ResourceArticlesSettings(
+                                                       postfix="category/crypto-news/page/",
+                                                       changeable_arg=None,
+                                                       args={}
+                                                   ),
+                                                   concrete_setting=ResourceArticlesSettings(
+                                                       postfix="",
+                                                       changeable_arg="p",
+                                                       args={}
+                                                   ),
                                                    ))
 
-    for parser in parsers:
-        conn = SqlliteConnector(INDEX_DB_FILE, parser.get_name())
-        with conn:
-            for article in get_all_articles(from_dt, to_dt, inspector, parser):
-                if not conn.has_article(article.id):
-                    filename = f"binance_{article.id}"
-                    article_html = parser.request_article_info(article.id)
-                    article_info = parser.parse_article_info(article_html)
-                    save_to_disk(filename, parser.get_folder_path(), article_info)
-                    conn.insert_article(ArticleRow(article.id, datetime.fromtimestamp(article.timestamp), True), soft=True)
+    conn = SqlliteConnector(INDEX_DB_FILE)
+    all_recipe = ElementRecipe(tags={
+        "articles": TagRecipe(selector="article", attr=None, filters=[])
+        },
+        parser="html.parser")
+    # concrete_recipe = ElementRecipe(tags={
+    #     "header": TagRecipe(selector="div.entry-post > div.page-title", attr="text", filters=[]),
+    #     "content": TagRecipe(selector="div.entry-post > div.coincodex-content", attr="text", filters=[]),
+    #     "publication_dt": TagRecipe(selector="div.entry-post > span.last-modified-timestamp", attr="text", filters=[]),
+    #     "href": TagRecipe(selector="meta[property='og:url']", attr="content", filters=[]),
+    #     "meta_keywords": TagRecipe(selector="meta", attr="content", filters=[])
+    #     },
+    #     parser="html.parser")
+    concrete_recipe = ElementRecipe(tags={
+        "id": TagRecipe(selector="article", attr="id", filters=[]),
+        "datetime": TagRecipe(selector="time", attr="datetime", filters=[]),
+        "time": TagRecipe(selector="span.entry-time", attr="text", filters=[])
+        },
+        parser="html.parser")
+    with conn:
+        for article in get_all_articles(from_dt, to_dt, scrapper, all_recipe, concrete_recipe):
+            if not conn.has_article(article.id):
+                filename = f"binance_{article.id}"
+                # article_html = parser.request_article_info(article.id)
+                # article_info = parser.parse_article_info(article_html)
+                # save_to_disk(filename, parser.get_folder_path(), article_info)
+                # conn.insert_article(ArticleRow(article.id, datetime.fromtimestamp(article.timestamp), True), soft=True)
 
 
 if __name__ == "__main__":
-    parse_articles(datetime(2023, 5, 21, 1, 0, 0), datetime(2023, 5, 20, 0, 0, 0), [PotatoParser(RequestInspector()),])
+    parse_articles(datetime(2023, 5, 21, 1, 0, 0), datetime(2023, 5, 20, 0, 0, 0))
