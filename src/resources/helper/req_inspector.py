@@ -5,7 +5,7 @@ from typing import Optional, Dict
 import requests
 from requests import Response
 
-from src.error.errors import RequestError
+from src.core.error.errors import RequestError
 
 
 class RequestInspector:

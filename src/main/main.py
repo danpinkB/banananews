@@ -6,14 +6,14 @@ import zipfile
 from datetime import datetime
 from typing import Optional, Iterator
 
-from src.entity.entities import ArticleInfoShort, ArticleInfo
-from src.error.errors import RequestError
-from src.helper.req_iterator import RequestIterator
-from src.helper.sqllite_connector import SqlliteConnector
-from src.parser import parse
-from src.parser.parser_ import ElementRecipe, TagRecipe
-from src.scrapper import Scrapper, ScrapperSettings
-from src.scrapper.scrapper import ResourceArticlesSettings
+from src.core.entity.entities import ArticleInfoShort, ArticleInfo
+from src.core.error import RequestError
+from src.resources.helper.req_iterator import RequestIterator
+from src.resources.helper.sqllite_connector import SqlliteConnector
+from src.resources.parser import parse
+from src.resources.parser.parser_ import ElementRecipe, TagRecipe
+from src.resources.scrapper import Scrapper, ScrapperSettings
+from src.resources.scrapper import ResourceArticlesSettings
 
 INDEX_DB_FILE = pathlib.Path(os.getcwd()) / "articles.db"
 

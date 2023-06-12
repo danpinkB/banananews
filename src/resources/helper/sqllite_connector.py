@@ -2,7 +2,7 @@ import pathlib
 import sqlite3
 from typing import Dict, List, Set
 
-from src.entity.entities import ArticleRow
+from src.core.entity.entities import ArticleRow
 
 
 class SqlliteConnector:

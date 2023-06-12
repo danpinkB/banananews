@@ -1,8 +1,7 @@
-from typing import Generator, Iterator
+from typing import Iterator
 
-from src.entity.entities import ArticleInfoShort
-from src.helper.req_inspector import RequestInspector
-from src.scrapper import Scrapper
+from src.core.entity.entities import ArticleInfoShort
+from src.resources.scrapper import Scrapper
 
 
 class RequestIterator:

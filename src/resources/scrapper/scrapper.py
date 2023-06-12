@@ -2,7 +2,7 @@ from typing import Any, NamedTuple, Optional
 
 from requests import Response
 
-from src.helper.req_inspector import RequestInspector
+from src.resources.helper.req_inspector import RequestInspector
 
 
 class ResourceArticlesSettings(NamedTuple):
