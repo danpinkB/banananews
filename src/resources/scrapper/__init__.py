@@ -1,2 +1,2 @@
-from .scrapper import Scrapper, ScrapperSettings
+from .scrapper import Scrapper, ScrapperSettings,ResourceArticlesSettings
 

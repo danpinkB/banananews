@@ -12,8 +12,7 @@ from src.resources.helper.req_iterator import RequestIterator
 from src.resources.helper.sqllite_connector import SqlliteConnector
 from src.resources.parser import parse
 from src.resources.parser.parser_ import ElementRecipe, TagRecipe
-from src.resources.scrapper import Scrapper, ScrapperSettings
-from src.resources.scrapper import ResourceArticlesSettings
+from src.resources.scrapper import Scrapper, ScrapperSettings, ResourceArticlesSettings
 
 INDEX_DB_FILE = pathlib.Path(os.getcwd()) / "articles.db"
 
