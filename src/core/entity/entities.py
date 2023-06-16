@@ -31,4 +31,4 @@ class ArticleRow(NamedTuple):
         )
 
     def to_row(self) -> Tuple[str, str, int]:
-        return (self.id, self.dt.isoformat(), int(self.parsed))
+        return self.id, self.dt.isoformat(), int(self.parsed)

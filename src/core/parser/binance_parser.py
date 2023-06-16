@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 
 from src.core.entity.entities import ArticleInfoShort, ArticleInfo
 from src.core.error.errors import RequestError, ContentParsingError
-from src.resources.helper.req_inspector import RequestInspector
+from src.core.helper.req_inspector import RequestInspector
 
 ARTICLES_REQ_URL = "https://www.binance.com/bapi/composite/v1/public/cms/news/queryFlashNewsList"
 CONCRETE_ARTICLE_URL = "https://www.binance.com/en/news/flash/"
