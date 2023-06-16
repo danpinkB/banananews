@@ -1,16 +1,14 @@
 import re
-from typing import Any
+from typing import Any, Optional
 
 from bs4 import Tag
 from datetime import datetime
 
-pattern_ = r'(\n\w+ \d{1,2}, \d{4}\n\d{2}:\d{2})'
 
-
-def data_matcher(s: str) -> str:
+def pattern_matcher(s: str, pattern_: str) -> str:
     match = re.search(pattern_, s)
     if match:
-        return match.group()
+        return match.group(1)
     return ""
 
 
@@ -22,11 +20,9 @@ def parse_date(data_: str, format_: str) -> datetime:
     return datetime.strptime(data_, format_)
 
 
-def select_prev(tag: Tag, selector: str) -> Tag:
+def select_prev(tag: Tag, selector: str, attr: str) -> Optional[Tag]:
     res = tag.findPrevious(selector)
-    if res is None:
-        return tag
-    return res
+    return get_tag_attr(res, attr) if res is not None else None
 
 
 def get_tag_attr(tag: Tag, attr: str) -> Any:
@@ -44,7 +40,7 @@ def split_string(s_: str, delimiter: str, index_to_get: int) -> str:
 
 
 functions = {
-    "data_match": data_matcher,
+    "pattern_matcher": pattern_matcher,
     "join_list": join_list,
     "to_int": lambda x: int(x),
     "select_prev_tag": select_prev,

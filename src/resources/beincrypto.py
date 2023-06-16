@@ -8,15 +8,14 @@ from src.core.scrapper.html.html_scrapper import HtmlPageScrapper
 
 settings = ScrapperSettings(
         hour_limit=720000,
-        list_url="https://cryptopotato.com/category/crypto-news/page/{{page}}/",
-        article_url="https://cryptopotato.com/?p={{id}}",
-        next_page=TagRecipe(selector="ul.pagination li.active + li", attr="href", filters={"get_first": {}}),
+        list_url="https://beincrypto.com/news/page/{{page}}/",
+        article_url="https://beincrypto.com/{{id}}",
+        next_page=TagRecipe(selector="a[aria-label='Next page']", attr="href", filters={"get_first": {}}),
         prev_page=TagRecipe(
-            selector="ul.pagination li.active",
-            attr="tag",
+            selector="a[aria-label='Previous page']",
+            attr="href",
             filters={
-                "get_first": {},
-                "select_prev_tag": {"selector": "li:not([class*='.'])", "attr": "href"}
+                "get_first": {}
             }),
         driver=""
     )
@@ -24,42 +23,41 @@ inspector = RequestInspector()
 scrapper = HtmlScrapper(settings, inspector)
 page_scrapper = HtmlPageScrapper(settings, inspector)
 
-
 list_recipe = ElementRecipe(
-    tags={"articles": TagRecipe(selector="article", attr=None, filters={})},
+    tags={"articles": TagRecipe(selector="div.card", attr=None, filters={})},
     parser="html.parser")
 
 article_info_recipe = ElementRecipe(
     tags={
-        "header": TagRecipe(selector="div.entry-post > div.page-title", attr="text", filters={"get_first": {}}),
-        "content": TagRecipe(selector="div.entry-post > div.coincodex-content", attr="text", filters={"get_first": {}}),
-        "publication_dt": TagRecipe(selector="div.entry-post > span.last-modified-timestamp", attr="text", filters={"get_first": {}, "parse_date": {"format_": "%b %d, %Y @ %H:%M"}}),
+        "header": TagRecipe(selector="article > h1.h4", attr="text", filters={"get_first": {}}),
+        "content": TagRecipe(selector="article > div.entry-content", attr="text", filters={"get_first": {}}),
+        "publication_dt": TagRecipe(selector="article > time", attr="datetime", filters={"get_first": {}, "parse_date": {"format_": "%Y-%m-%dT%H:%M:%S%z"}}),
         "href": TagRecipe(selector="meta[property='og:url']", attr="content", filters={"get_first": {}}),
-        "meta_keywords": TagRecipe(selector="meta",attr="content", filters={})
+        "meta_keywords": TagRecipe(selector="meta", attr="content", filters={})
     },
     parser="html.parser")
 
 article_short_info_recipe = ElementRecipe(
     tags={
         "id": TagRecipe(
-            selector="article",
-            attr="id",
+            selector="h5.h-full a",
+            attr="href",
             filters={
                 "get_first": {},
-                "split_string": {"delimiter": "-", "index_to_get": 1}
+                "pattern_matcher": {"pattern_": r"https:\/\/beincrypto.com\/(.+?)\/"}
             }),
         "datetime": TagRecipe(
-            selector="div.entry-meta time.entry-date,span.entry-time",
-            attr="text",
+            selector="time.ago",
+            attr="datetime",
             filters={
-                "join_list": {},
-                "parse_date": {"format_": "%b %d, %Y,%H:%M"}
+                "get_first": {},
+                "parse_date": {"format_": "%Y-%m-%dT%H:%M:%S%z"}
             })
     },
     parser="html.parser")
 
 
-def parse_potato_list(page: int) -> list[ArticleInfoShort]:
+def parse_bein_crypto_list(page: int) -> list[ArticleInfoShort]:
     html = scrapper.scrape_resource(page)
     parsed_articles_html = parse_data(html, list_recipe)
     articles = list()
@@ -72,7 +70,7 @@ def parse_potato_list(page: int) -> list[ArticleInfoShort]:
     return articles
 
 
-def parse_potato_article(id_: int) -> ArticleInfo:
+def parse_bein_crypto_article(id_: int) -> ArticleInfo:
     html = page_scrapper.scrape_page(id_)
     parsed_article = parse_data(html, article_info_recipe)
     return ArticleInfo(

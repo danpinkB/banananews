@@ -9,3 +9,4 @@ class ScrapperSettings(NamedTuple):
     next_page: TagRecipe
     prev_page: TagRecipe
     driver: str
+

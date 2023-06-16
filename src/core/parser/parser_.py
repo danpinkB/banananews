@@ -1,18 +1,31 @@
+import json
 from typing import Any
 
 from bs4 import BeautifulSoup, Tag
 
 from src.core.entity import ElementRecipe
 from .functions import functions
+from jsonpath_ng import parse, jsonpath
 
 
-def parse(data: str, recipe: ElementRecipe) -> dict[str, Any]:
-    bs_ = BeautifulSoup(data, recipe.parser)
-
+def parse_data(data: Any, recipe: ElementRecipe) -> dict[str, Any]:
     result = dict()
-    for i in recipe.tags:
-        tag = recipe.tags.get(i)
-        result[i] = _call_filters_chain(tag.filters, [get_tag_attr(tag_, tag.attr) for tag_ in bs_.select(tag.selector)])
+    match recipe.parser:
+        case "html.parser":
+            bs_ = BeautifulSoup(data, recipe.parser)
+            for field_name in recipe.tags:
+                tag = recipe.tags.get(field_name)
+                selected_tags = bs_.select(tag.selector)
+                if len(selected_tags) > 0:
+                    result[field_name] = _call_filters_chain(tag.filters, [get_tag_attr(tag_, tag.attr) for tag_ in selected_tags])
+                else:
+                    result[field_name] = None
+        case "json.parser":
+            json_data = json.loads(data)
+            for field_name in recipe.tags:
+                tag = recipe.tags.get(field_name)
+                jsonpath_exp = parse(tag.selector)
+                result[field_name] = parse("")
     return result
 
 

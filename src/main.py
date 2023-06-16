@@ -1,5 +1,4 @@
 import json
-import os
 import pathlib
 import tempfile
 import zipfile
@@ -10,9 +9,8 @@ from src.core.entity.entities import ArticleInfoShort, ArticleInfo
 from src.core.error import RequestError
 # from src.resources.helper.req_iterator import RequestIterator
 from src.core.helper.sqllite_connector import SqlliteConnector
-from src.resources import parse_potato_list
-
-INDEX_DB_FILE = pathlib.Path(os.getcwd()) / "articles.db"
+from src.resources import parse_potato_list, parse_bein_crypto_list
+from src.const import INDEX_DB_FILE
 
 
 def get_first_index_of_element_from_to(from_: float, to_: float, arr: list[ArticleInfoShort]) -> int:
@@ -92,7 +90,7 @@ def parse_articles(from_dt: Optional[datetime], to_dt: Optional[datetime]) -> No
     conn = SqlliteConnector(INDEX_DB_FILE)
 
     with conn:
-        for article in get_all_articles(from_dt, to_dt, parse_potato_list):
+        for article in get_all_articles(from_dt, to_dt, parse_bein_crypto_list):
             if not conn.has_article(article.id):
                 filename = f"binance_{article.id}"
                 # article_html = parser.request_article_info(article.id)
