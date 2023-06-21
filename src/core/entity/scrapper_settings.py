@@ -1,5 +1,5 @@
 from typing import NamedTuple
-from .recipe import TagRecipe
+from .parse_resource_recipe import TagRecipe
 
 
 class ScrapperSettings(NamedTuple):

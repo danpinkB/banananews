@@ -3,7 +3,7 @@ from datetime import datetime
 
 from bs4 import BeautifulSoup
 
-from src.core.entity.entities import ArticleInfoShort, ArticleInfo
+from src.core.entity.article_info_short import ArticleInfoShort, ArticleInfo
 from src.core.error.errors import RequestError, ContentParsingError
 from src.core.helper.req_inspector import RequestInspector
 

@@ -2,7 +2,7 @@ import pathlib
 import sqlite3
 from typing import Dict, List, Set
 
-from src.core.entity.entities import ArticleRow
+from src.core.entity import ArticleRow
 
 
 class SqlliteConnector:
@@ -10,8 +10,14 @@ class SqlliteConnector:
         self._conn = sqlite3.connect(file_name)
         self._cursor = self._conn.cursor()
         self._conn.execute('''
+        CREATE TABLE IF NOT EXISTS article_resources (
+            
+        )
         CREATE TABLE IF NOT EXISTS articles (
             id VARCHAR(36) PRIMARY KEY, 
+            href VARCHAR(1000),
+            slug VARCHAR(255),
+            article_resource_id 
             posted_date DATE, 
             is_parsed INTEGER
         )

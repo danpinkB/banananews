@@ -5,7 +5,7 @@ import zipfile
 from datetime import datetime
 from typing import Optional, Iterator, Callable
 
-from src.core.entity.entities import ArticleInfoShort, ArticleInfo
+from src.core.entity import ArticleInfoShort, ArticleInfo
 from src.core.error import RequestError
 # from src.resources.helper.req_iterator import RequestIterator
 from src.core.helper.sqllite_connector import SqlliteConnector
@@ -90,7 +90,7 @@ def parse_articles(from_dt: Optional[datetime], to_dt: Optional[datetime]) -> No
     conn = SqlliteConnector(INDEX_DB_FILE)
 
     with conn:
-        for article in get_all_articles(from_dt, to_dt, parse_bein_crypto_list):
+        for article in get_all_articles(from_dt, to_dt, parse_potato_list):
             if not conn.has_article(article.id):
                 filename = f"binance_{article.id}"
                 # article_html = parser.request_article_info(article.id)
