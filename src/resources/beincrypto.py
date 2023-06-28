@@ -31,7 +31,7 @@ article_info_recipe = ElementRecipe(
         "publication_dt": TagRecipe(selector="article > time", attr="datetime",
                                     filters=["get_first", "date_format_known"]),
         "href": TagRecipe(selector="meta[property='og:url']", attr="content", filters=["get_first"]),
-        "meta_keywords": TagRecipe(selector="meta", attr="content", filters=[])
+        "meta_keywords": TagRecipe(selector="meta[content]", attr="content", filters=[])
     },
     parser=ParserType.HTML)
 

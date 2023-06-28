@@ -29,7 +29,7 @@ article_info_recipe = ElementRecipe(
         "content": TagRecipe(selector="div.entry-post > div.coincodex-content", attr="text", filters=["get_first"]),
         "publication_dt": TagRecipe(selector="div.entry-post > span.last-modified-timestamp", attr="text", filters=["get_first","date_format_b_d_Y_A_H_M"]),
         "href": TagRecipe(selector="meta[property='og:url']", attr="content", filters=["get_first"]),
-        "meta_keywords": TagRecipe(selector="meta", attr="content", filters=[])
+        "meta_keywords": TagRecipe(selector="meta[content]", attr="content", filters=[])
     },
     parser=ParserType.HTML)
 
