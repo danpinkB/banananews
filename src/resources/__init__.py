@@ -1,3 +1,5 @@
-from .potato import parse_potato_list, parse_potato_article
-from .beincrypto import parse_bein_crypto_article, parse_bein_crypto_list
+from .potato import potato
+from .beincrypto import beincrypto
+from .potato_rss import potato_rss
 
+resources = [potato, potato_rss, beincrypto]

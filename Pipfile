@@ -9,6 +9,9 @@ beautifulsoup4 = "==4.12.2"
 requests = "==2.30.0"
 python-dateutil = "==2.8.2"
 jsonpath-ng = "==1.5.3"
+selenium = "*"
+python-dotenv = "*"
+feedparser = "*"
 
 [dev-packages]
 

@@ -1,11 +1,8 @@
 import threading
 import time
-from typing import Optional, Dict
-
-import requests
-from requests import Response
-
-from src.core.error.errors import RequestError
+from jinja2 import Template
+from typing import Optional, Dict, Any
+from src.core.helper.request_driver import BaseDriver
 
 
 class RequestInspector:
@@ -13,27 +10,34 @@ class RequestInspector:
         headers = dict((k.strip().lower(), v) for k, v in (headers or dict()).items())
         if 'user-agent' not in headers:
             headers['user-agent'] = 'Mozilla/5.0 (Windows NT 10.0; rv:91.0) Gecko/20100101 Firefox/91.0'
-        self.hour_limit = req_hour_rate
-        self.last_parsed_time = time.time()
-        self.lock = threading.Lock()
-        self.minute_rate = int(req_hour_rate / 60)
-        self.delta = 0
-        self.headers = headers
+        self._hour_limit = req_hour_rate
+        self._last_parsed_time = time.time()
+        self._lock = threading.Lock()
+        self._minute_rate = int(req_hour_rate / 60)
+        self._delta = 0
+        self._headers = headers
 
-    def request_get(self, url: str, req_args: Dict[str, str]) -> Response:
-        with self.lock:
-            self.delta += 1
+    def get_headers(self) -> Dict[str, str]:
+        return self._headers
+
+    def _lock_request(self) -> None:
+        with self._lock:
+            self._delta += 1
             now = time.time()
-            time_delta = 60 - (now - self.last_parsed_time)
+            time_delta = 60 - (now - self._last_parsed_time)
             if time_delta < 60:
-                if self.delta >= self.minute_rate:
+                if self._delta >= self._minute_rate:
                     time.sleep(time_delta)
-                    self.last_parsed_time = now + time_delta
-                    self.delta = 0
+                    self._last_parsed_time = now + time_delta
+                    self._delta = 0
             else:
-                self.last_parsed_time = now
-                self.delta = 0
-            res = requests.get(url, params=req_args, headers=self.headers)
-            if res.status_code >= 400:
-                raise RequestError(f"error while getting resource with status code - {res.status_code}")
-            return res
+                self._last_parsed_time = now
+                self._delta = 0
+
+    def request_get(self, url: str, req_args: Dict[str, str], driver: BaseDriver) -> str:
+        self._lock_request()
+        return driver.get_resource(url, req_args)
+
+    def request_get_page(self, url: Template, req_args: Dict[str, str], driver: BaseDriver, page: Any) -> str:
+        self._lock_request()
+        return driver.get_page(url, req_args, page)

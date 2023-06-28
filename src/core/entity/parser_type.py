@@ -2,6 +2,8 @@ from enum import Enum
 
 
 class ParserType(Enum):
-    HTML = 1
-    JSON = 2
+    HTML = "html.parser"
+    JSON = "json"
+    RSS = "lxml"
+    RSS_JSON = "rssjson"
 

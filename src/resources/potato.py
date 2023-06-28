@@ -1,28 +1,30 @@
 from datetime import datetime
 
-from src.core.entity import ScrapperSettings, ElementRecipe, TagRecipe, ArticleInfoShort, ArticleInfo, ParserType
+from src.core.entity import ScrapperSettings, ElementRecipe, TagRecipe, ArticleInfoShort, ArticleInfo, ParserType, \
+    DriverType, Resource
 from src.core.helper.req_inspector import RequestInspector
+from src.core.helper.request_driver import RequestDriver
 from src.core.scrapper import HtmlScrapper, HtmlPageScrapper
 
 
 settings = ScrapperSettings(
         hour_limit=720000,
-        list_url="https://cryptopotato.com/category/crypto-news/page/{{page}}/",
-        article_url="https://cryptopotato.com/?p={{id}}",
-        next_page=TagRecipe(selector="ul.pagination li.active + li", attr="href", filters=["get_first"]),
+        href="https://cryptopotato.com/category/crypto-news/page/{{page}}/",
+        next_page=TagRecipe(selector="ul.pagination li.active + li a", attr="href", filters=["get_first"]),
         prev_page=TagRecipe(
             selector="ul.pagination li.active",
             attr="tag",
             filters=[
                 "get_first",
-                "select_prev_li_without_classes"
+                "select_prev_li_without_classes",
                 "get_tag_href"
             ]),
-        driver=""
+        list_driver=DriverType.REQUEST,
+        page_driver=DriverType.REQUEST
     )
 inspector = RequestInspector()
-scrapper = HtmlScrapper(settings, inspector)
-page_scrapper = HtmlPageScrapper(settings, inspector)
+scrapper = HtmlScrapper(settings, RequestDriver(inspector.get_headers()), inspector)
+page_scrapper = HtmlPageScrapper(settings,RequestDriver(inspector.get_headers()), inspector)
 
 
 list_recipe = ElementRecipe(
@@ -31,11 +33,11 @@ list_recipe = ElementRecipe(
 
 article_info_recipe = ElementRecipe(
     tags={
-        "header": TagRecipe(selector="div.entry-post > div.page-title", attr="text", filters=["get_first"]),
-        "content": TagRecipe(selector="div.entry-post > div.coincodex-content", attr="text", filters=["get_first"]),
-        "publication_dt": TagRecipe(selector="div.entry-post > span.last-modified-timestamp", attr="text", filters=["get_first","date_format_b_d_Y_A_H_M"]),
-        "href": TagRecipe(selector="meta[property='og:url']", attr="content", filters=["get_first"]),
-        "meta_keywords": TagRecipe(selector="meta", attr="content", filters=[])
+        "header": TagRecipe(selector="div.entry-post > header > div.page-title > h1", attr="text", filters=["get_first"]),
+        "content": TagRecipe(selector="div.entry-post > div", attr="text", filters=["get_first"]),
+        "publication_dt": TagRecipe(selector="div.entry-post > header > div.entry-meta > span.entry-date > span", attr="text", filters=["get_first", "date_format_b_d_Y_A_H_M"]),
+        "href": TagRecipe(selector="head > meta[property='og:url']", attr="content", filters=["get_first"]),
+        "meta_keywords": TagRecipe(selector="meta[content]", attr="content", filters=[])
     },
     parser=ParserType.HTML)
 
@@ -61,31 +63,13 @@ article_short_info_recipe = ElementRecipe(
     },
     parser=ParserType.HTML)
 
-
-def parse_potato_list(page: int) -> list[ArticleInfoShort]:
-    html = scrapper.scrape_resource(page)
-    parsed_articles_html = list_recipe.parse_data(html)
-    articles = list()
-    for article_html in parsed_articles_html.get("articles"):
-        parsed_article = article_short_info_recipe.parse_data(article_html)
-        articles.append(ArticleInfoShort(
-            id=parsed_article.get("id"),
-            href=parsed_article.get("href"),
-            timestamp=parsed_article.get("datetime").timestamp()
-        ))
-    return articles
-
-
-def parse_potato_article(id_: int) -> ArticleInfo:
-    html = page_scrapper.scrape_page(id_)
-    parsed_article = article_info_recipe.parse_data(html)
-    return ArticleInfo(
-        href=parsed_article.get("href"),
-        parsing_dt=datetime.now(),
-        content=parsed_article.get("content"),
-        header=parsed_article.get("header"),
-        publication_dt=parsed_article.get("publication_dt"),
-        meta_keywords=parsed_article.get("meta_keywords"),
-        html=html
-    )
+potato = Resource(
+    list_recipe=list_recipe,
+    article_short_info_recipe=article_short_info_recipe,
+    article_info_recipe=article_info_recipe,
+    scrapper=scrapper,
+    page_scrapper=page_scrapper,
+    is_binary_search=True,
+    is_pageble=True
+)
 

@@ -4,6 +4,7 @@ from bs4 import BeautifulSoup, Tag
 from src.core.functions import functions
 from jsonpath_ng import parse
 from .parser_type import ParserType
+import feedparser
 
 
 class TagRecipe(NamedTuple):
@@ -16,11 +17,11 @@ class ElementRecipe(NamedTuple):
     tags: dict[str, TagRecipe]
     parser: ParserType
 
-    def parse_data(self, data: str) -> dict[str, Any]:
+    def parse_data(self, data: Any) -> dict[str, Any]:
         result = dict()
         match self.parser:
             case ParserType.HTML:
-                bs_ = BeautifulSoup(data, "html.parser")
+                bs_ = BeautifulSoup(data, self.parser.value)
                 for field_name in self.tags:
                     tag = self.tags.get(field_name)
                     selected_tags = bs_.select(tag.selector)
@@ -32,8 +33,22 @@ class ElementRecipe(NamedTuple):
                 json_data = json.loads(data)
                 for field_name in self.tags:
                     tag = self.tags.get(field_name)
-                    jsonpath_exp = parse(tag.selector)
-                    result[field_name] = parse("")
+                    exp = parse(tag.selector)
+                    result[field_name] = exp.find(json_data)
+            case ParserType.RSS:
+                rss = feedparser.parse(data)
+                for field_name in self.tags:
+                    tag = self.tags.get(field_name)
+                    selected_tags = rss[tag.selector]
+                    if len(selected_tags) > 0:
+                        result[field_name] = _call_filters_chain(tag.filters, [_get_tag_attr(tag_, tag.attr) for tag_ in selected_tags])
+                    else:
+                        result[field_name] = None
+            case ParserType.RSS_JSON:
+                json_data = data
+                for field_name in self.tags:
+                    tag = self.tags.get(field_name)
+                    result[field_name] = _call_filters_chain(tag.filters, json_data[tag.selector])
         return result
 
 

@@ -11,28 +11,34 @@ class SqlliteConnector:
         self._cursor = self._conn.cursor()
         self._conn.execute('''
         CREATE TABLE IF NOT EXISTS article_resources (
-            
-        )
-        CREATE TABLE IF NOT EXISTS articles (
-            id VARCHAR(36) PRIMARY KEY, 
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            href VARCHAR(3000)
+        );
+        ''')
+        self._conn.execute('''
+        CREATE TABLE IF NOT EXISTS article_links (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             href VARCHAR(1000),
             slug VARCHAR(255),
-            article_resource_id 
-            posted_date DATE, 
-            is_parsed INTEGER
-        )
+            published_dt DATE, 
+            article_resource_id INTEGER,
+            parsed_dt DATE,
+            article_archive_file_version INTEGER,
+            article_archive_file_path VARCHAR(1000),
+            FOREIGN KEY (article_resource_id) REFERENCES article_resources(id)
+        );
         ''')
         self._articles: Dict[str, ArticleRow] = dict()
-        self._cursor.execute(f"SELECT * FROM articles ORDER BY posted_date")
-        for row in self._cursor.fetchall():
-            id_ = row[0]
-            self._articles[id_] = ArticleRow.from_row(row)
 
         self._not_saved_new: List[ArticleRow] = list()
         self._not_saved_parsed: Set[str] = set()
 
     # for context manager
-    def __enter__(self):
+    def __enter__(self) -> 'SqlliteConnector':
+        self._cursor.execute(f"SELECT * FROM article_links ORDER BY published_dt")
+        for row in self._cursor.fetchall():
+            id_ = row[0]
+            self._articles[id_] = ArticleRow.from_row(row)
         return self
 
     def __exit__(self, type_, value, traceback):
@@ -42,7 +48,7 @@ class SqlliteConnector:
     # for context manager
 
     def _add_article(self, article: ArticleRow) -> None:
-        self._cursor.execute(f"INSERT INTO articles (id, posted_date, is_parsed) VALUES (?, ?, ?)", article.to_row())
+        self._cursor.execute(f"INSERT INTO article_links (id, posted_date, is_parsed) VALUES (?, ?, ?)", article.to_row())
 
     def _mark_article_as_parsed(self, article_id: str) -> None:
         self._cursor.execute(f"UPDATE articles SET is_parsed = 1 WHERE id = ?", (article_id,))
@@ -59,16 +65,14 @@ class SqlliteConnector:
     def insert_article(self, article: ArticleRow, *, soft: bool = False) -> None:
         if article.id in self._articles:
             return
-
         self._articles[article.id] = article
-
         if soft:
             self._not_saved_new.append(article)
         else:
             self._add_article(article)
 
     def set_parsed(self, article_id: str, *, soft: bool = False) -> None:
-        if self._articles[article_id].parsed:
+        if self._articles[article_id].parsed_dt is not None:
             return
 
         self._articles[article_id] = ArticleRow(

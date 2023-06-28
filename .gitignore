@@ -6,7 +6,7 @@ __pycache__/
 
 # C extensions
 *.so
-uploads/
+data/
 articles.db
 .idea
 # Distribution / packaging

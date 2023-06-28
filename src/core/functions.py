@@ -62,7 +62,10 @@ def split_string_dash_1(s_: str) -> str:
 functions = {
     "get_slug_from_url": get_slug_from_url,
     "join_list": join_list,
+    "to_str": lambda x: str(x),
+    "list_to_str": lambda arr: [str(i) for i in arr],
     "to_int": lambda x: int(x),
+    "get_20_last": lambda x: x[len(x)-20:len(x)],
     "select_prev_li_without_classes": select_prev_li_without_classes,
     "get_tag_href": get_tag_href,
     "date_format_b_d_Y_comma_H_M": date_format_b_d_Y_comma_H_M,
