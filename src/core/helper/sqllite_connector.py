@@ -17,7 +17,7 @@ class SqlliteConnector:
         ''')
         self._conn.execute('''
         CREATE TABLE IF NOT EXISTS article_links (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id VARCHAR(100),
             href VARCHAR(1000),
             slug VARCHAR(255),
             published_dt DATE, 
@@ -48,10 +48,20 @@ class SqlliteConnector:
     # for context manager
 
     def _add_article(self, article: ArticleRow) -> None:
-        self._cursor.execute(f"INSERT INTO article_links (id, posted_date, is_parsed) VALUES (?, ?, ?)", article.to_row())
+        self._cursor.execute("""
+        INSERT INTO article_links (
+            id,
+            href,
+            slug,
+            published_dt, 
+            article_resource_id,
+            parsed_dt,
+            article_archive_file_version,
+            article_archive_file_path
+        )""", article.to_row())
 
-    def _mark_article_as_parsed(self, article_id: str) -> None:
-        self._cursor.execute(f"UPDATE articles SET is_parsed = 1 WHERE id = ?", (article_id,))
+    def _mark_article_as_parsed(self, parsed_dt: str, article_archive_file_path: str, article_id: str) -> None:
+        self._cursor.execute(f"UPDATE articles SET parsed_dt = ?, article_archive_file_version = 1, article_archive_file_path=?  WHERE id = ?", (article_id, parsed_dt, article_archive_file_path))
 
     def save(self) -> None:
         for article in self._not_saved_new:
@@ -71,22 +81,18 @@ class SqlliteConnector:
         else:
             self._add_article(article)
 
-    def set_parsed(self, article_id: str, *, soft: bool = False) -> None:
-        if self._articles[article_id].parsed_dt is not None:
-            return
-
-        self._articles[article_id] = ArticleRow(
-            id=self._articles[article_id].id,
-            dt=self._articles[article_id].dt,
-            parsed=True,
-        )
-        if soft:
-            self._not_saved_parsed.add(article_id)
-        else:
-            self._mark_article_as_parsed(article_id)
+    # def set_parsed(self, article_id: str, *, soft: bool = False) -> None:
+    #     if self._articles[article_id].parsed_dt is not None:
+    #         return
+    #     row = self._articles[article_id]
+    #     self._articles[article_id] = row
+    #     if soft:
+    #         self._not_saved_parsed.add(article_id)
+    #     else:
+    #         self._mark_article_as_parsed(article_id)
 
     def is_parsed(self, article_id: str) -> bool:
-        return self._articles.get(article_id).parsed
+        return self._articles.get(article_id).parsed_dt is not None
 
     def get_size(self) -> int:
         return len(self._articles)

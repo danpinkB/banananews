@@ -10,6 +10,7 @@ import feedparser
 class TagRecipe(NamedTuple):
     selector: str
     attr: Optional[str]
+    action: Optional[str]
     filters: list[str]
 
 

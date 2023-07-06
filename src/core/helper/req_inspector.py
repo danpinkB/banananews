@@ -1,8 +1,6 @@
 import threading
 import time
-from jinja2 import Template
-from typing import Optional, Dict, Any
-from src.core.helper.request_driver import BaseDriver
+from typing import Optional, Dict
 
 
 class RequestInspector:
@@ -20,7 +18,7 @@ class RequestInspector:
     def get_headers(self) -> Dict[str, str]:
         return self._headers
 
-    def _lock_request(self) -> None:
+    def lock_request(self) -> None:
         with self._lock:
             self._delta += 1
             now = time.time()
@@ -34,10 +32,10 @@ class RequestInspector:
                 self._last_parsed_time = now
                 self._delta = 0
 
-    def request_get(self, url: str, req_args: Dict[str, str], driver: BaseDriver) -> str:
-        self._lock_request()
-        return driver.get_resource(url, req_args)
-
-    def request_get_page(self, url: Template, req_args: Dict[str, str], driver: BaseDriver, page: Any) -> str:
-        self._lock_request()
-        return driver.get_page(url, req_args, page)
+    # def request_get(self, url: str, req_args: Dict[str, str], driver: BaseDriver) -> str:
+    #     self._lock_request()
+    #     return driver.get_resource(url, req_args)
+    #
+    # def request_get_page(self, url: Template, req_args: Dict[str, str], driver: BaseDriver, page: Any) -> str:
+    #     self._lock_request()
+    #     return driver.get_page(url, req_args, page)

@@ -1,35 +1,19 @@
-from datetime import datetime
-
-from src.core.entity import ScrapperSettings, ElementRecipe, TagRecipe, ArticleInfoShort, ArticleInfo, ParserType, \
-    DriverType, Resource
-from src.core.helper.req_inspector import RequestInspector
-from src.core.helper.request_driver import RequestDriver
-from src.core.scrapper import HtmlScrapper, HtmlPageScrapper
-
-
-settings = ScrapperSettings(
-        hour_limit=720000,
-        href="https://cryptopotato.com/feed/",
-        next_page=TagRecipe(selector="none", attr=None, filters=[]),
-        prev_page=TagRecipe(selector="none", attr=None, filters=[]),
-        list_driver=DriverType.REQUEST,
-        page_driver=DriverType.REQUEST
-    )
-inspector = RequestInspector()
-scrapper = HtmlScrapper(settings, RequestDriver(inspector.get_headers()), inspector)
-page_scrapper = HtmlPageScrapper(settings, RequestDriver(inspector.get_headers()), inspector)
+from src.core.entity import ReactorSettings, ElementRecipe, TagRecipe, ParserType, \
+    DriverType, PagerType
 
 list_recipe = ElementRecipe(
-    tags={"articles": TagRecipe(selector="entries", attr="tag", filters=[])},
+    tags={"articles": TagRecipe(selector="entries", attr="tag", filters=[], action=None)},
     parser=ParserType.RSS)
 
 article_info_recipe = ElementRecipe(
     tags={
-        "header": TagRecipe(selector="div.entry-post > div.page-title", attr="text", filters=["get_first"]),
-        "content": TagRecipe(selector="div.entry-post > div.coincodex-content", attr="text", filters=["get_first"]),
-        "publication_dt": TagRecipe(selector="div.entry-post > span.last-modified-timestamp", attr="text", filters=["get_first","date_format_b_d_Y_A_H_M"]),
-        "href": TagRecipe(selector="meta[property='og:url']", attr="content", filters=["get_first"]),
-        "meta_keywords": TagRecipe(selector="meta[content]", attr="content", filters=[])
+        "id": TagRecipe(selector="article", attr="id", filters=["get_first", "split_string_dash_1"], action=None),
+        "header": TagRecipe(selector="div.entry-post > header > div.page-title > h1", attr="text", filters=["get_first"], action=None),
+        "content": TagRecipe(selector="div.entry-post > div", attr="text", filters=["get_first"], action=None),
+        "slug": TagRecipe(selector="head > meta[property='og:url']", attr="content", filters=["get_slug_from_url"], action=None),
+        "publication_dt": TagRecipe(selector="div.entry-post > header > div.entry-meta > span.entry-date > span", attr="text", filters=["get_first", "date_format_b_d_Y_A_H_M"], action=None),
+        "href": TagRecipe(selector="head > meta[property='og:url']", attr="content", filters=["get_first"], action=None),
+        "meta_keywords": TagRecipe(selector="meta[content]", attr="content", filters=[], action=None)
     },
     parser=ParserType.HTML)
 
@@ -41,27 +25,36 @@ article_short_info_recipe = ElementRecipe(
             attr=None,
             filters=[
                 "get_slug_from_url"
-            ]),
+            ],
+            action=None),
         "href": TagRecipe(
             selector="link",
             attr=None,
-            filters=[]
+            filters=[],
+            action=None
         ),
         "datetime": TagRecipe(
             selector="published",
             attr=None,
-            filters=["date_format_known"]
+            filters=["date_format_known"],
+            action=None
         )
     },
     parser=ParserType.RSS_JSON)
 
 
-potato_rss = Resource(
-    list_recipe=list_recipe,
-    article_short_info_recipe=article_short_info_recipe,
-    article_info_recipe=article_info_recipe,
-    scrapper=scrapper,
-    page_scrapper=page_scrapper,
-    is_binary_search=False,
-    is_pageble=True
-)
+settings = ReactorSettings(
+        hour_limit=720000,
+        href="https://cryptopotato.com/feed/",
+        next_page=None,
+        prev_page=None,
+        list_driver=DriverType.REQUEST,
+        page_driver=DriverType.REQUEST,
+        list_recipe=list_recipe,
+        article_info_recipe=article_info_recipe,
+        article_short_info_recipe=article_short_info_recipe,
+        pager_type=PagerType.NONE,
+        is_binary_search=False
+    )
+
+
